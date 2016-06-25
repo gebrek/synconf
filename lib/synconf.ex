@@ -1,0 +1,2 @@
+defmodule Synconf do
+end
