@@ -10,31 +10,27 @@ defmodule Ver do
 end
 
 defmodule Conf do
-  defstruct path: "", versions: %{}, head: ""
+  defstruct path: "", head: "", versions: %{}
 
-  def start_link(filepath) do
-    {:ok, content} = File.read(filepath)
-    {:ok, stat} = File.stat(filepath)
-    chksum = :crypto.hash(:sha, content)
-    Agent.start_link(fn -> %Conf{path: filepath,
-				 versions: %{chksum =>
-				   %Ver{content: content,
-					parent: nil,
-					timestamp: stat.mtime}},
-				 head: chksum}
-    end)
-  end
+  def new(filepath) do
+    with {:ok, content} <- File.read(filepath),
+	 {:ok, stat} <- File.stat(filepath),
+	   chksum = :crypto.hash(:sha, content),
+      do: %Conf{path: filepath,
+		head: chksum,
+		versions: %{chksum =>
+		  %Ver{content: content,
+		       parent: nil,
+		       timestamp: stat.mtime}}}
 
-  def get(conf) do
-    Agent.get(conf, &(&1))
   end
 
   def update?(conf) do
-    c = get(conf)
-    {:ok, stat} = File.stat(c.path)
-    if stat.mtime > c.versions[c.head].timestamp do
-      {:ok, content} = File.read(c.path)
-      :crypto.hash(:sha, content) != c.head
+    {:ok, stat} = File.stat(conf.path)
+    head_ver = conf.versions[conf.head].timestamp
+    if stat.mtime > head_ver do
+      {:ok, content} = File.read(conf.path)
+      :crypto.hash(:sha, content) != conf.head
     else
       false
     end
@@ -42,18 +38,44 @@ defmodule Conf do
 
   def update(conf) do
     if update?(conf) do
-      c = get(conf)
-      {:ok, content} = File.read(c.path)
-      {:ok, stat} = File.stat(c.path)
-      chksum = :crypto.hash(:sha, content)
-      Agent.update(conf, fn(c) -> %Conf{path: c.path,
-					versions: Map.put(c.versions, chksum,
-					  %Ver{content: content,
-					       parent: c.head,
-					       timestamp: stat.mtime}),
-					head: chksum}
-      end)
+      with {:ok, content} <- File.read(conf.path),
+	   {:ok, stat} <- File.stat(conf.path),
+	     chksum = :crypto.hash(:sha, content),
+	do: %Conf{path: conf.path,
+		  head: chksum,
+		  versions: Map.put(conf.versions, chksum,
+		    %Ver{content: content,
+			 parent: conf.head,
+			 timestamp: stat.mtime})}
     end
+  end
+end
+
+defmodule Conf.Monitor do
+  use GenServer
+
+  # Client
+
+  def start_link(filepath) do
+    GenServer.start_link(__MODULE__, Conf.new(filepath))
+  end
+
+  def status(pid) do
+    GenServer.call(pid, :status)
+  end
+
+  def update(pid) do
+    GenServer.cast(pid, :update)
+  end
+
+  # Server
+
+  def handle_call(:status, _from, conf) do
+    {:reply, conf, conf}
+  end
+
+  def handle_cast(:update, conf) do
+    {:noreply, Conf.update(conf)}
   end
 end
 
