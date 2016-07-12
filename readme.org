@@ -1,0 +1,7 @@
+* Synconf
+** TODO add description
+** Model
+   
+* TODO monitor conf changes
+* TODO supervise monitors
+* TODO communicate changes with other nodes
