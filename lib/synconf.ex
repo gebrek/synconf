@@ -6,10 +6,18 @@ defmodule Synconf do
 end
 
 defmodule Ver do
+  @moduledoc """
+  The literal version in whole
+  """
+
   defstruct [:content, :parent, :timestamp]
 end
 
 defmodule Conf do
+  @moduledoc """
+  Defines versioning metadata and controls updating that data. 
+  """
+
   defstruct path: "", head: "", versions: %{}
 
   def new(filepath) do
@@ -36,6 +44,10 @@ defmodule Conf do
     end
   end
 
+  @doc """
+  This function is called regularly to both check and update a version if necessary.
+  """
+  
   def update(conf) do
     if update?(conf) do
       with {:ok, content} <- File.read(conf.path),
@@ -55,27 +67,45 @@ defmodule Conf.Monitor do
   use GenServer
 
   # Client
+  def start_link() do
+    GenServer.start_link(__MODULE__, %Conf{})
 
-  def start_link(filepath) do
-    GenServer.start_link(__MODULE__, Conf.new(filepath))
-  end
+    def start_link(filepath) do
+      GenServer.start_link(__MODULE__, Conf.new(filepath))
+    end
 
-  def status(pid) do
-    GenServer.call(pid, :status)
-  end
+    def status(pid) do
+      GenServer.call(pid, :status)
+    end
 
-  def update(pid) do
-    GenServer.cast(pid, :update)
-  end
+    def update(pid) do
+      GenServer.cast(pid, :update)
+    end
 
-  # Server
+    # Server
 
-  def handle_call(:status, _from, conf) do
-    {:reply, conf, conf}
-  end
+    def handle_call(:status, _from, conf) do
+      {:reply, conf, conf}
+    end
 
-  def handle_cast(:update, conf) do
-    {:noreply, Conf.update(conf)}
+    def handle_cast(:update, conf) do
+      {:noreply, Conf.update(conf)}
+    end
   end
 end
 
+defmodule Conf.Monitor.Supervisor do
+  use Supervisor
+
+  def start_link do
+    Supervisor.start_link(__MODULE__, [])
+  end
+
+  def init([]) do
+    children = [
+      worker(Conf.Monitor, [], restart: :transient)
+    ]
+
+    supervise(children, strategy: :simple_one_for_one)
+  end
+end
